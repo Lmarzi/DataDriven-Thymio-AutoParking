@@ -1,0 +1,160 @@
+import numpy as np
+from numpy.linalg import inv
+import matplotlib.pyplot as plt
+
+# Car 3
+# y' = sin(theta)v
+# theta' = omega
+# x' = cos(theta)(v1+v2)
+# y' = sin(theta)(v1+v2)
+# theta' = v2-v1
+T = np.pi
+# QUi devo avere N come in matlab ma +1
+N = 20001
+tau = T / (N - 1)
+x_0 = np.array([-0.94, -0.44, 0])
+# delta = 0.3 * (np.ones(3) - 2 * np.random.rand(3))
+delta = 0.3 * (np.ones(3) - np.array([0.4, 0.6, 0.3]))
+x = x_0
+# Nominal trajectory
+L = 0.2
+l = 0.1
+decima = 500
+car = np.array([[L, l], [-L, l], [-L, -l], [L, -l], [L, l]])
+t = np.linspace(0, T, N)
+alpha = 2
+beta = 0.57
+A = alpha * (t / T - (t * t) / (T * T))
+U = np.array([alpha * (t / T - (t * t) / (T * T)), beta * np.cos(t)])
+X = np.zeros((N, 3))
+X[0] = x_0
+print(X)
+# X = np.insert(np.zeros((3, N - 1)), 0, x_0, axis=1)
+# print(X)
+pert = 0.01
+U1 = U + np.array([0.0 * np.ones(N), 0.2 * np.exp(-1 * t)])
+U2 = U + np.array([-0.2 * np.ones(N), 0.0 * np.exp(-1 * t)])
+U3 = U + np.array([0.0 * np.ones(N), 0.2 * np.ones(N)])
+X1 = np.zeros((3, N))  # forse da mettere N-1 boh
+X2 = np.zeros((3, N))
+X3 = np.zeros((3, N))
+
+# nominal
+
+x = x_0
+# print(X)
+for k in range(1, N, 1):
+    u = U[:, k:(k + 1):1]
+    f = np.array([u[0][0] * np.cos(x[2]), u[0][0] * np.sin(x[2]), u[1][0]])
+    x = x + tau * f
+    X[k] = x
+
+# first
+x_fin = x
+# plt.plot(t, X[:, 0:1:1], label='x')
+# plt.plot(t, X[:, 1:2:1], label='y')
+# plt.plot(t, X[:, 2:3:1], label='theta')
+# plt.legend()
+# plt.grid()
+# plt.show()
+x = x_fin + np.array([pert, 0, 0])
+
+X1 = X1.T
+
+for k in range(N - 1, -1, -1):
+    X1[k] = x
+    u = U1[:, k:(k + 1):1]
+    f = np.array([u[0][0] * np.cos(x[2]), u[0][0] * np.sin(x[2]), u[1][0]])
+    x = x - tau * f
+
+# second
+
+x = x_fin + np.array([0, pert, 0])
+X2 = X2.T
+for k in range(N - 1, -1, -1):
+    X2[k] = x
+    u = U2[:, k:(k + 1):1]
+    f = np.array([u[0][0] * np.cos(x[2]), u[0][0] * np.sin(x[2]), u[1][0]])
+    x = x - tau * f
+    #X2[k] = x  # secondo me è sbagliato mettere qua, da contattare
+
+
+# TERZO
+
+x = x_fin + np.array([0, 0, pert])
+X3 = X3.T
+for k in range(N - 1, -1, -1):
+    X3[k] = x
+    u = U3[:, k:(k + 1):1]
+    f = np.array([u[0][0] * np.cos(x[2]), u[0][0] * np.sin(x[2]), u[1][0]])
+    x = x - tau * f
+
+
+# STABILIZATION
+V1 = U1 - U
+V2 = U2 - U
+V3 = U3 - U
+# print("X1",X1)
+# print("X",X)
+Z1 = X1 - X
+# print("Z1",Z1)
+Z2 = X2 - X
+# print("Z2",Z2)
+Z3 = X3 - X
+# print("Z3",Z3)
+Z_1 = np.array([Z1[0], Z2[0], Z3[0]])
+# print(Z_1)
+Z_N = np.array([Z1[N - 2], Z2[N - 2], Z3[N - 2]])
+# print(Z_N)
+# print(sum(abs(np.dot(inv(Z_1.T), Z_N.T))))
+# print(np.sum(abs(inv(Z_1)*Z_N)))
+K = np.array(np.zeros((N, 2, 3)))
+for h in range(0, N, 1):
+    v = np.array([V1.T[h], V2.T[h], V3.T[h]])
+    # print("v",v)
+    z = inv(np.array([Z1[h], Z2[h], Z3[h]]))
+    # print("z",z)
+    K[h] = np.dot(z, v).T
+
+# stabilization test
+x_reg = x_0 + delta
+x = x_0
+X_nom = np.zeros((N, 3))
+X_nom[0] = x
+X_reg = np.zeros((N, 3))
+X_reg[0] = x_reg
+
+X_nom = [x]
+X_reg = [x_reg]
+
+# requires filtering
+
+v_fil = np.zeros(2)
+T_fil = 0.005
+#print(x)
+#print(x_reg)
+print(len(X_reg))
+for h in range(1, N, 1):
+    u = U.T[h]
+    #print("u", u, h)
+    f = np.array([u[0] * np.cos(x[2]), u[0] * np.sin(x[2]), u[1]])
+    #print("f", f, h)
+    x = x + tau * f
+    # X_nom[h] = x
+    X_nom = np.concatenate((X_nom,[x]))
+    #print(x_reg)
+    #print(X_nom[h])
+    v = u + np.dot(K[h], (x_reg - X_nom[h]))
+    #print("v", v, h)
+    v_fil = v_fil + tau * (v - v_fil) / T_fil
+    #print(v_fil)
+    f_reg = np.array([v_fil[0] * np.cos(x_reg[2]), v_fil[0] * np.sin(x_reg[2]), v_fil[1]])
+    #print(f_reg)
+    x_reg = x_reg + tau * f_reg
+    #print("x_reg", x_reg, h)
+    #X_reg[h] = x_reg
+    X_reg = np.concatenate((X_reg,[x_reg]))
+
+#print("X_reg.T", X_reg)
+# print("X", X)
+#print("K",K)
